@@ -1,0 +1,26 @@
+{
+  "name": "live-streaming-recorder",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Rekam live TikTok & Instagram otomatis dari URL profil (Next.js UI + worker ffmpeg/yt-dlp)",
+  "scripts": {
+    "dev": "node scripts/next.mjs dev",
+    "build": "next build",
+    "start": "node scripts/next.mjs start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "15.5.4",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  }
+}

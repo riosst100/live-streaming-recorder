@@ -1,0 +1,14 @@
+services:
+  live-streaming-recorder:
+    build: .
+    container_name: live-streaming-recorder
+    restart: unless-stopped
+    stop_grace_period: 40s
+    ports:
+      - "9843:9843"
+    environment:
+      - PASSWORD=ganti-password-ini
+      - TZ=Asia/Jakarta
+    volumes:
+      - ./data:/data
+      - ./downloads:/downloads

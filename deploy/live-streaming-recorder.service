@@ -1,0 +1,27 @@
+[Unit]
+Description=Live Streaming Recorder (TikTok & Instagram)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__APP_USER__
+Group=__APP_USER__
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=__ENV_FILE__
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+# Beri waktu ffmpeg menutup file dengan rapi
+KillSignal=SIGTERM
+TimeoutStopSec=40
+LimitNOFILE=65536
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
