@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { DATA_DIR } from './config';
-import type { Channel, Recording, Settings } from './types';
+import type { Channel, MediaItem, MediaSource, Recording, Settings } from './types';
 
 export const defaultSettings: Settings = {
   pollIntervalSec: 60,
@@ -16,11 +16,16 @@ export const defaultSettings: Settings = {
   webhookUrl: '',
   telegramBotToken: '',
   telegramChatId: '',
+  storyIntervalMin: 10,
+  feedIntervalMin: 30,
+  feedCount: 12,
 };
 
 interface DB {
   channels: Channel[];
   recordings: Recording[];
+  mediaSources: MediaSource[];
+  mediaItems: MediaItem[];
   settings: Settings;
 }
 
@@ -44,6 +49,10 @@ class Store {
       return {
         channels: raw.channels ?? [],
         recordings: raw.recordings ?? [],
+        // data lama (sebelum ada TikTok) selalu Instagram
+        mediaSources: (raw.mediaSources ?? []).map((s) => ({ ...s, platform: s.platform ?? 'instagram' })),
+        // data sebelum fitur "baru/dilihat" dianggap sudah dilihat
+        mediaItems: (raw.mediaItems ?? []).map((i) => ({ ...i, seen: i.seen ?? true })),
         settings: { ...defaultSettings, ...(raw.settings ?? {}) },
       };
     } catch (e) {
@@ -54,7 +63,7 @@ class Store {
         } catch {}
         console.error(`[store] db.json rusak, backup ke ${backup}`, e);
       }
-      return { channels: [], recordings: [], settings: { ...defaultSettings } };
+      return { channels: [], recordings: [], mediaSources: [], mediaItems: [], settings: { ...defaultSettings } };
     }
   }
 
@@ -107,6 +116,72 @@ class Store {
   }
   removeChannel(id: string) {
     this.db.channels = this.db.channels.filter((c) => c.id !== id);
+    this.save();
+  }
+
+  // ---- media sources (Stories / Feed)
+  listMediaSources(kind?: MediaSource['kind']): MediaSource[] {
+    return kind ? this.db.mediaSources.filter((s) => s.kind === kind) : this.db.mediaSources;
+  }
+  getMediaSource(id: string): MediaSource | undefined {
+    return this.db.mediaSources.find((s) => s.id === id);
+  }
+  addMediaSource(s: MediaSource): MediaSource {
+    this.db.mediaSources.push(s);
+    this.save();
+    return s;
+  }
+  updateMediaSource(id: string, patch: Partial<MediaSource>): MediaSource | undefined {
+    const s = this.getMediaSource(id);
+    if (!s) return undefined;
+    Object.assign(s, patch);
+    this.save();
+    return s;
+  }
+  removeMediaSource(id: string) {
+    this.db.mediaSources = this.db.mediaSources.filter((s) => s.id !== id);
+    this.db.mediaItems = this.db.mediaItems.filter((i) => i.sourceId !== id);
+    this.save();
+  }
+
+  // ---- media items
+  listMediaItems(): MediaItem[] {
+    return this.db.mediaItems;
+  }
+  getMediaItem(id: string): MediaItem | undefined {
+    return this.db.mediaItems.find((i) => i.id === id);
+  }
+  hasMediaItem(sourceId: string, mediaId: string): boolean {
+    return this.db.mediaItems.some((i) => i.sourceId === sourceId && i.mediaId === mediaId);
+  }
+  updateMediaItem(id: string, patch: Partial<MediaItem>): MediaItem | undefined {
+    const i = this.getMediaItem(id);
+    if (!i) return undefined;
+    Object.assign(i, patch);
+    this.save();
+    return i;
+  }
+  /** Tandai dilihat: satu item (id), atau semua item milik kind/sourceId. Mengembalikan jumlah yang berubah. */
+  markMediaSeen(filter: { id?: string; kind?: MediaItem['kind']; sourceId?: string }): number {
+    let n = 0;
+    for (const i of this.db.mediaItems) {
+      if (i.seen) continue;
+      if (filter.id && i.id !== filter.id) continue;
+      if (filter.kind && i.kind !== filter.kind) continue;
+      if (filter.sourceId && i.sourceId !== filter.sourceId) continue;
+      i.seen = true;
+      n++;
+    }
+    if (n) this.save();
+    return n;
+  }
+  addMediaItem(i: MediaItem): MediaItem {
+    this.db.mediaItems.push(i);
+    this.save();
+    return i;
+  }
+  removeMediaItem(id: string) {
+    this.db.mediaItems = this.db.mediaItems.filter((i) => i.id !== id);
     this.save();
   }
 

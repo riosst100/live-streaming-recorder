@@ -1,4 +1,4 @@
-import { authEnabled, safeEqual, SESSION_COOKIE, sessionToken } from '@/lib/auth';
+import { authEnabled, SESSION_COOKIE, sessionToken, verifyPassword } from '@/lib/auth';
 import { error, readBody } from '@/lib/server-utils';
 import { NextResponse } from 'next/server';
 
@@ -14,7 +14,8 @@ export async function POST(req: Request) {
   if (a && a.until > Date.now()) return error('Terlalu banyak percobaan, coba lagi nanti', 429);
 
   const { password } = await readBody<{ password: string }>(req);
-  if (typeof password !== 'string' || !safeEqual(password, process.env.PASSWORD ?? '')) {
+  const kind = typeof password === 'string' ? verifyPassword(password) : null;
+  if (!kind) {
     const count = (a?.count ?? 0) + 1;
     attempts.set(ip, { count, until: count >= 5 ? Date.now() + 5 * 60_000 : 0 });
     await new Promise((r) => setTimeout(r, 500));
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
 
   attempts.delete(ip);
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(SESSION_COOKIE, sessionToken(), {
+  res.cookies.set(SESSION_COOKIE, sessionToken(kind), {
     httpOnly: true,
     sameSite: 'lax',
     secure: req.headers.get('x-forwarded-proto') === 'https',

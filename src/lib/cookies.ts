@@ -66,3 +66,13 @@ export function getCookieValue(header: string, name: string): string | undefined
   }
   return undefined;
 }
+
+/** Ubah cookies ke format Netscape cookies.txt (untuk `yt-dlp --cookies`). */
+export function toNetscape(input: string | undefined | null, defaultDomain: string): string {
+  const lines = ['# Netscape HTTP Cookie File'];
+  for (const c of parseCookies(input)) {
+    const domain = c.domain || `.${defaultDomain}`;
+    lines.push([domain, domain.startsWith('.') ? 'TRUE' : 'FALSE', '/', 'TRUE', '0', c.name, c.value].join('\t'));
+  }
+  return lines.join('\n') + '\n';
+}

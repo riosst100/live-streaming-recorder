@@ -14,7 +14,10 @@ SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "==> Install paket sistem (ffmpeg, curl, python3, rsync)"
 apt-get update -y
-DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl gnupg ffmpeg python3 rsync
+DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl gnupg ffmpeg python3 python3-pip rsync
+
+# curl_cffi: Stories/Feed Instagram butuh TLS ala Chrome (scripts/impersonate_fetch.py)
+pip install --break-system-packages --upgrade curl_cffi 2>/dev/null || pip install --upgrade curl_cffi
 
 if ! command -v node >/dev/null || [[ "$(node -v | cut -d. -f1 | tr -d v)" -lt 20 ]]; then
   echo "==> Install Node.js ${NODE_MAJOR}"

@@ -26,12 +26,12 @@ interface Active {
 }
 
 /** Nama folder/file aman untuk Linux & Windows (tanpa titik di akhir, bukan nama terlarang seperti CON). */
-function safeName(s: string): string {
+export function safeName(s: string): string {
   const name = s.replace(/[^\w.-]+/g, '_').slice(0, 64).replace(/[. ]+$/, '_') || 'user';
   return /^(con|prn|aux|nul|com\d|lpt\d)$/i.test(name) ? `_${name}` : name;
 }
 
-function stamp(d: Date) {
+export function stamp(d: Date) {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 }

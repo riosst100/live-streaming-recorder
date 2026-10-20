@@ -59,7 +59,59 @@ export interface Settings {
   webhookUrl: string;
   telegramBotToken: string;
   telegramChatId: string;
+  /** Interval cek Stories (menit); story hilang setelah 24 jam jadi jangan terlalu jarang */
+  storyIntervalMin: number;
+  /** Interval cek Feed (menit) */
+  feedIntervalMin: number;
+  /** Jumlah postingan terbaru yang diperiksa tiap cek Feed (termasuk unduhan awal) */
+  feedCount: number;
 }
+
+export type MediaKind = 'story' | 'feed';
+
+/** Akun Instagram/TikTok yang dipantau untuk Stories / Feed */
+export interface MediaSource {
+  id: string;
+  kind: MediaKind;
+  platform: Platform;
+  username: string;
+  url: string;
+  nickname?: string;
+  avatar?: string;
+  platformUserId?: string;
+  enabled: boolean;
+  cookies?: string;
+  status: 'unknown' | 'ok' | 'error';
+  lastError?: string;
+  lastCheckedAt?: number;
+  /** Terakhir kali ada media baru terunduh */
+  lastNewAt?: number;
+  createdAt: number;
+}
+
+export interface MediaItem {
+  id: string;
+  sourceId: string;
+  kind: MediaKind;
+  username: string;
+  /** ID media dari platform (dipakai untuk mencegah unduh ganda) */
+  mediaId: string;
+  type: 'image' | 'video';
+  /** Path relatif terhadap DOWNLOAD_DIR (pakai '/') */
+  file: string;
+  size: number;
+  /** Waktu media diposting (ms) */
+  takenAt: number;
+  downloadedAt: number;
+  caption?: string;
+  /** Sudah dilihat di penampil; false = muncul di daftar "baru" */
+  seen: boolean;
+  /** File sudah dihapus dari disk; catatan dipertahankan supaya tidak diunduh ulang */
+  deleted?: boolean;
+  deletedAt?: number;
+}
+
+export type MediaSourceView = MediaSource & { checking?: boolean; itemCount: number; unseenCount: number };
 
 export interface ActiveInfo {
   recordingId: string;

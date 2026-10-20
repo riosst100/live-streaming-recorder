@@ -1,3 +1,4 @@
+import { authEnabled } from '@/lib/auth';
 import { DATA_DIR, DOWNLOAD_DIR, FFMPEG_PATH, YTDLP_PATH } from '@/lib/config';
 import { binaryVersion, diskInfo, json } from '@/lib/server-utils';
 
@@ -16,6 +17,6 @@ export async function GET() {
     dataDir: DATA_DIR,
     downloadDir: DOWNLOAD_DIR,
     disk: diskInfo(),
-    authEnabled: !!process.env.PASSWORD,
+    authEnabled: authEnabled(),
   });
 }

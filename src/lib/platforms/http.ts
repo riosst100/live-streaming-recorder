@@ -17,7 +17,7 @@ async function request(url: string, headers: Record<string, string>): Promise<Re
     cache: 'no-store',
     signal: AbortSignal.timeout(20_000),
   });
-  if (res.status === 429) throw new HttpError('Rate limited (429), coba perbesar interval polling', 429);
+  if (res.status === 429) throw new HttpError('Rate limited (429): server membatasi permintaan dari IP/akun ini', 429);
   return res;
 }
 

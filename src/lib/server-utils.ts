@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import { NextResponse } from 'next/server';
 import { DOWNLOAD_DIR } from './config';
 import { getManager } from './manager';
+import { getMediaManager } from './media-manager';
 import { getStore } from './store';
-import type { ChannelView, DiskInfo } from './types';
+import type { ChannelView, DiskInfo, MediaSourceView } from './types';
 
 export const json = (data: unknown, status = 200) => NextResponse.json(data, { status });
 export const error = (message: string, status = 400) => NextResponse.json({ error: message }, { status });
@@ -21,6 +22,15 @@ export function listChannelViews(): ChannelView[] {
     .listChannels()
     .map((c) => channelView(c.id)!)
     .filter(Boolean);
+}
+
+export function mediaSourceView(id: string): MediaSourceView | undefined {
+  const store = getStore();
+  const s = store.getMediaSource(id);
+  if (!s) return undefined;
+  const items = store.listMediaItems().filter((i) => i.sourceId === id);
+  const unseenCount = items.filter((i) => !i.seen).length;
+  return { ...s, checking: getMediaManager().isChecking(id), itemCount: items.length, unseenCount };
 }
 
 export function diskInfo(): DiskInfo | null {

@@ -22,6 +22,10 @@ export async function PUT(req: Request) {
   if (patch.pollIntervalSec !== undefined && (patch.pollIntervalSec < 15 || patch.pollIntervalSec > 3600)) {
     return error('Interval polling harus 15–3600 detik');
   }
+  const range = (k: 'storyIntervalMin' | 'feedIntervalMin' | 'feedCount', min: number, max: number) =>
+    patch[k] !== undefined && !(patch[k]! >= min && patch[k]! <= max) ? `${k} harus ${min}–${max}` : null;
+  const bad = range('storyIntervalMin', 1, 720) || range('feedIntervalMin', 5, 1440) || range('feedCount', 1, 50);
+  if (bad) return error(bad);
   for (const k of ['tiktokEngine', 'instagramEngine'] as const) {
     if (patch[k] && !['ffmpeg', 'ytdlp'].includes(patch[k]!)) return error(`${k} tidak valid`);
   }

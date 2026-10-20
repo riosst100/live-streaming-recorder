@@ -35,6 +35,63 @@ function CookieStatus({ value, required }: { value: string; required: string[] }
   );
 }
 
+function PasswordCard({ enabled }: { enabled: boolean }) {
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
+
+  async function submit() {
+    if (next !== confirm) return setMsg({ type: 'error', text: 'Konfirmasi password tidak sama.' });
+    setBusy(true);
+    setMsg(null);
+    try {
+      await api('/api/auth/password', { method: 'POST', body: { current, next } });
+      setCurrent('');
+      setNext('');
+      setConfirm('');
+      setMsg({ type: 'ok', text: 'Password user diubah. Perangkat lain yang login dengan password user harus login ulang.' });
+    } catch (e) {
+      setMsg({ type: 'error', text: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <h2>Password user</h2>
+      <div className="alert info small" style={{ marginBottom: 14 }}>
+        Login menerima dua password: <b>password sistem</b> (dari <code>PASSWORD</code> di .env, tidak bisa diubah di sini) dan <b>password user</b> yang diatur di sini.
+      </div>
+      {msg && <div className={`alert ${msg.type}`} style={{ marginBottom: 14 }}>{msg.text}</div>}
+      <div className="grid-2">
+        {enabled && (
+          <div style={{ gridColumn: '1 / -1' }}>
+            <label className="label">Password saat ini (sistem atau user)</label>
+            <input className="input" type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />
+          </div>
+        )}
+        <div>
+          <label className="label">Password baru</label>
+          <input className="input" type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
+          <div className="hint">Minimal 6 karakter. Disimpan ter-hash di data/auth.json. Password sistem tetap bisa dipakai login.</div>
+        </div>
+        <div>
+          <label className="label">Ulangi password baru</label>
+          <input className="input" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+        </div>
+      </div>
+      <div style={{ marginTop: 14 }}>
+        <button className="btn primary" onClick={submit} disabled={busy || !next}>
+          {busy ? 'Menyimpan…' : 'Simpan password user'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const [s, setS] = useState<Settings | null>(null);
   const [sys, setSys] = useState<SystemInfo | null>(null);
@@ -139,6 +196,20 @@ export default function SettingsPage() {
             </select>
           </div>
           <div>
+            <label className="label">Interval cek Stories (menit)</label>
+            <input className="input" type="number" min={1} max={720} value={s.storyIntervalMin} onChange={(e) => set('storyIntervalMin', Number(e.target.value))} />
+            <div className="hint">Story hilang setelah 24 jam. Disarankan 5–30.</div>
+          </div>
+          <div>
+            <label className="label">Interval cek Feed (menit)</label>
+            <input className="input" type="number" min={5} max={1440} value={s.feedIntervalMin} onChange={(e) => set('feedIntervalMin', Number(e.target.value))} />
+          </div>
+          <div>
+            <label className="label">Postingan Feed yang diperiksa per cek</label>
+            <input className="input" type="number" min={1} max={50} value={s.feedCount} onChange={(e) => set('feedCount', Number(e.target.value))} />
+            <div className="hint">Saat akun baru ditambahkan, sebanyak ini postingan terbaru langsung diunduh.</div>
+          </div>
+          <div>
             <label className="label">Ukuran minimum file (KB)</label>
             <input
               className="input"
@@ -192,6 +263,8 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      <PasswordCard enabled={sys?.authEnabled ?? true} />
 
       <div className="card">
         <h2>Sistem</h2>
