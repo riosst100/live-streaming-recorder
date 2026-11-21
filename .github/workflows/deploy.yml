@@ -1,6 +1,7 @@
-name: Deploy to production
+name: CI / Deploy to production
 
-# Push to main -> build the image here and push it to ghcr.io, then the server
+# Pull request -> Check only (typecheck + shell syntax).
+# Push to main -> Check, then build the image here and push it to ghcr.io, then the server
 # (/var/www/live-streaming-recorder) runs ./deploy.sh: pull main + that image, restart.
 # The server never builds (4GB RAM shared with other stacks).
 on:
@@ -9,15 +10,35 @@ on:
     paths-ignore:
       - "**.md"
       - "docs/**"
+  pull_request:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-production
-  cancel-in-progress: false
+  # PRs cancel their own stale runs; deploys queue and are never cancelled.
+  group: ${{ github.event_name == 'pull_request' && format('ci-{0}', github.ref) || 'deploy-production' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - name: Shell syntax
+        run: for f in deploy.sh deploy/*.sh; do bash -n "$f"; done
+
   build:
     name: Build image
+    needs: check
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
