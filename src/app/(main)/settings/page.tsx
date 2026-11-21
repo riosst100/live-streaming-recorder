@@ -92,6 +92,79 @@ function PasswordCard({ enabled }: { enabled: boolean }) {
   );
 }
 
+interface ImportResult {
+  settings: boolean;
+  channels: { added: number; updated: number; skipped: number; removed: number };
+  mediaSources: { added: number; updated: number; skipped: number; removed: number };
+}
+
+function BackupCard({ onImported }: { onImported: () => void }) {
+  const [mode, setMode] = useState<'merge' | 'replace'>('merge');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
+
+  const summary = (r: ImportResult['channels']) =>
+    [r.added && `${r.added} ditambah`, r.updated && `${r.updated} diperbarui`, r.skipped && `${r.skipped} dilewati (sudah ada)`, r.removed && `${r.removed} dihapus`]
+      .filter(Boolean)
+      .join(', ') || 'tidak ada perubahan';
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (
+      mode === 'replace' &&
+      !confirm('Mode Ganti: channel & akun Stories/Feed yang tidak ada di file backup akan DIHAPUS (file rekaman tetap ada). Lanjutkan?')
+    )
+      return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await api<ImportResult>(`/api/backup?mode=${mode}`, { method: 'POST', body: await file.text() });
+      setMsg({
+        type: 'ok',
+        text: `Import selesai. Pengaturan ${r.settings ? 'dipulihkan' : 'tidak ada di file'} · Channel: ${summary(r.channels)} · Stories/Feed: ${summary(r.mediaSources)}.`,
+      });
+      onImported();
+    } catch (err) {
+      setMsg({ type: 'error', text: (err as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <h2>Backup &amp; Restore</h2>
+      <div className="alert info small" style={{ marginBottom: 14 }}>
+        Berisi pengaturan, daftar channel, dan akun Stories/Feed. <b>Tidak</b> termasuk rekaman/media yang sudah diunduh dan password user.
+        File backup memuat <b>cookies dan token Telegram</b>, jadi simpan di tempat yang aman.
+      </div>
+      {msg && <div className={`alert ${msg.type}`} style={{ marginBottom: 14 }}>{msg.text}</div>}
+      <div className="grid-2">
+        <div>
+          <label className="label">Export</label>
+          <a className="btn" href="/api/backup" download>
+            Unduh file backup
+          </a>
+        </div>
+        <div>
+          <label className="label">Import — mode</label>
+          <select className="select" value={mode} onChange={(e) => setMode(e.target.value as 'merge' | 'replace')}>
+            <option value="merge">Gabung — tambah yang belum ada, yang sudah ada dibiarkan</option>
+            <option value="replace">Ganti — samakan persis dengan isi backup</option>
+          </select>
+          <div className="hint">Pengaturan selalu ditimpa dari backup di kedua mode.</div>
+          <label className="btn primary" style={{ marginTop: 10, opacity: busy ? 0.6 : 1, pointerEvents: busy ? 'none' : undefined }}>
+            {busy ? 'Mengimport…' : 'Pilih file backup…'}
+            <input type="file" accept="application/json,.json" hidden onChange={onFile} disabled={busy} />
+          </label>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const [s, setS] = useState<Settings | null>(null);
   const [sys, setSys] = useState<SystemInfo | null>(null);
@@ -263,6 +336,8 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      <BackupCard onImported={() => api<Settings>('/api/settings').then(setS).catch(() => {})} />
 
       <PasswordCard enabled={sys?.authEnabled ?? true} />
 

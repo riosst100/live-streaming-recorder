@@ -1,5 +1,6 @@
 import { error, json, readBody } from '@/lib/server-utils';
-import { defaultSettings, getStore } from '@/lib/store';
+import { validateSettings } from '@/lib/settings-validate';
+import { getStore } from '@/lib/store';
 import type { Settings } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -9,25 +10,7 @@ export async function GET() {
 }
 
 export async function PUT(req: Request) {
-  const body = await readBody<Settings>(req);
-  const patch: Partial<Settings> = {};
-
-  // Hanya terima key yang dikenal, dengan tipe yang sama seperti default
-  for (const key of Object.keys(defaultSettings) as (keyof Settings)[]) {
-    const v = body[key];
-    if (v === undefined) continue;
-    if (typeof v !== typeof defaultSettings[key]) return error(`Tipe ${key} tidak valid`);
-    (patch as Record<string, unknown>)[key] = typeof v === 'string' ? v.trim() : v;
-  }
-  if (patch.pollIntervalSec !== undefined && (patch.pollIntervalSec < 15 || patch.pollIntervalSec > 3600)) {
-    return error('Interval polling harus 15–3600 detik');
-  }
-  const range = (k: 'storyIntervalMin' | 'feedIntervalMin' | 'feedCount', min: number, max: number) =>
-    patch[k] !== undefined && !(patch[k]! >= min && patch[k]! <= max) ? `${k} harus ${min}–${max}` : null;
-  const bad = range('storyIntervalMin', 1, 720) || range('feedIntervalMin', 5, 1440) || range('feedCount', 1, 50);
-  if (bad) return error(bad);
-  for (const k of ['tiktokEngine', 'instagramEngine'] as const) {
-    if (patch[k] && !['ffmpeg', 'ytdlp'].includes(patch[k]!)) return error(`${k} tidak valid`);
-  }
-  return json(getStore().updateSettings(patch));
+  const r = validateSettings(await readBody<Settings>(req));
+  if ('error' in r) return error(r.error);
+  return json(getStore().updateSettings(r.patch));
 }
