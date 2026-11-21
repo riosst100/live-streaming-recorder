@@ -1,0 +1,32 @@
+# Production: https://live-recorder.inovasionline.com on the shared 51.79.159.44 host.
+# Caddy on the host terminates TLS and proxies to 127.0.0.1:9843 (never published publicly).
+#   ./deploy.sh   pull main + the image CI built (ghcr.io), restart; run by hand it builds here instead
+# The image is built by GitHub Actions (.github/workflows/deploy.yml) so the 4GB server never runs a build.
+# Disk is shared with other sites: deploy/disk-guard.sh (cron) deletes recordings older than
+# 7 days and stops this container when free space drops below 5 GB.
+# Secrets come from .env next to this file (PASSWORD). docker-compose.yml is the plain self-host setup.
+name: live-streaming-recorder
+
+services:
+  live-streaming-recorder:
+    build:
+      context: .
+      labels:
+        org.opencontainers.image.source: https://github.com/riosst100/live-streaming-recorder
+    image: ghcr.io/riosst100/live-streaming-recorder:latest
+    container_name: live-streaming-recorder
+    restart: unless-stopped
+    # Lets the recorder finish writing and remuxing the current .ts on shutdown.
+    stop_grace_period: 40s
+    environment:
+      PASSWORD: ${PASSWORD:?set PASSWORD in .env}
+      TZ: Asia/Jakarta
+    ports:
+      - "127.0.0.1:9843:9843"
+    volumes:
+      - ./data:/data
+      - ./downloads:/downloads
+    mem_limit: 768m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
