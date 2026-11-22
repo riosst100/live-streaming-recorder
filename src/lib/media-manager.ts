@@ -246,7 +246,8 @@ class MediaManager {
     const items = await Promise.all(saved.map((s, i) => item(s.dest, s.size, i === 0 ? m.mediaId : `${m.mediaId}_${i}`, 'image')));
     // Musik pelengkap: kalau gagal, fotonya tetap disimpan.
     if (photo.music) {
-      const dest = path.join(dir, `${base}_audio.mp3`);
+      // TikTok's music playUrl has no extension but is AAC in an MP4 container.
+      const dest = path.join(dir, `${base}_audio.m4a`);
       try {
         items.push(await item(dest, await download(photo.music, dest, TIKTOK_DOWNLOAD_HEADERS), `${m.mediaId}_audio`, 'audio'));
       } catch (e) {
