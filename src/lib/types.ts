@@ -96,7 +96,8 @@ export interface MediaItem {
   username: string;
   /** ID media dari platform (dipakai untuk mencegah unduh ganda) */
   mediaId: string;
-  type: 'image' | 'video';
+  /** 'audio' = musik postingan foto TikTok (slideshow) */
+  type: 'image' | 'video' | 'audio';
   /** Path relatif terhadap DOWNLOAD_DIR (pakai '/') */
   file: string;
   size: number;

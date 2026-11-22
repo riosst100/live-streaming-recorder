@@ -193,6 +193,8 @@ export default function MediaPage({ kind }: { kind: MediaKind }) {
                     ) : it.type === 'video' ? (
                       // Video tidak dimuat di grid; baru diputar setelah diklik
                       <span className="media-video">▶</span>
+                    ) : it.type === 'audio' ? (
+                      <span className="media-video">♪</span>
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={`/api/media/items/${it.id}/file`} alt="" loading="lazy" />
@@ -200,7 +202,7 @@ export default function MediaPage({ kind }: { kind: MediaKind }) {
                     {it.deleted ? (
                       <span className="media-tag deleted">Dihapus</span>
                     ) : (
-                      it.type === 'video' && <span className="media-tag">Video</span>
+                      it.type !== 'image' && <span className="media-tag">{it.type === 'audio' ? 'Audio' : 'Video'}</span>
                     )}
                     {!it.seen && <span className="media-new">Baru</span>}
                     <span className="media-cap">{timeAgo(it.takenAt)}</span>
@@ -327,6 +329,8 @@ function Viewer({
         </div>
       ) : cur.type === 'video' ? (
         <video key={cur.id} src={`/api/media/items/${cur.id}/file`} controls autoPlay playsInline />
+      ) : cur.type === 'audio' ? (
+        <audio key={cur.id} src={`/api/media/items/${cur.id}/file`} controls autoPlay style={{ width: '100%' }} />
       ) : (
         // eslint-disable-next-line @next/next/no-img-element
         <img key={cur.id} className="media-full" src={`/api/media/items/${cur.id}/file`} alt="" />

@@ -10,9 +10,9 @@ import type { IgResult } from './instagram-media';
 const LIST_TIMEOUT_MS = 90_000;
 const DOWNLOAD_TIMEOUT_MS = 180_000;
 
-function run(args: string[], timeoutMs: number): Promise<{ code: number | null; stdout: string; stderr: string }> {
+function run(args: string[], timeoutMs: number, cwd?: string): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const p = spawn(YTDLP_PATH, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const p = spawn(YTDLP_PATH, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd });
     let stdout = '';
     let stderr = '';
     p.stdout.on('data', (d) => (stdout += d));
@@ -72,6 +72,58 @@ export async function fetchTikTokFeed(username: string, rawCookies: string, coun
   };
 }
 
+export const TIKTOK_DOWNLOAD_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
+  Referer: 'https://www.tiktok.com/',
+};
+
+export interface TikTokPhotoPost {
+  /** Per foto: daftar URL alternatif (CDN berbeda), urutan sesuai slideshow */
+  images: string[][];
+  music?: string;
+}
+
+/**
+ * Data postingan foto (slideshow). `null` = bukan postingan foto (video biasa).
+ * yt-dlp hanya memberi audio untuk postingan foto, dan halaman/API TikTok butuh challenge atau
+ * tanda tangan; karena itu halaman yang sudah lolos challenge diambil dari yt-dlp (`--write-pages`)
+ * lalu dibaca `itemStruct.imagePost` di data rehidrasinya.
+ */
+export async function fetchTikTokPhotoPost(pageUrl: string, rawCookies: string): Promise<TikTokPhotoPost | null> {
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'lr-pages-'));
+  try {
+    const { stderr } = await withCookieFile(rawCookies, (c) =>
+      run(['--skip-download', '--write-pages', '--no-warnings', '--no-progress', ...c, pageUrl], LIST_TIMEOUT_MS, dir),
+    );
+    let found = false;
+    for (const f of await fs.promises.readdir(dir)) {
+      if (!f.endsWith('.dump')) continue;
+      const html = await fs.promises.readFile(path.join(dir, f), 'utf8');
+      const m = html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/);
+      if (!m) continue;
+      let item: any;
+      try {
+        item = JSON.parse(m[1])?.__DEFAULT_SCOPE__?.['webapp.video-detail']?.itemInfo?.itemStruct;
+      } catch {
+        continue;
+      }
+      if (!item) continue;
+      found = true;
+      const images: string[][] = (item.imagePost?.images ?? [])
+        .map((im: any) => (im?.imageURL?.urlList ?? []).filter((u: unknown) => typeof u === 'string'))
+        .filter((l: string[]) => l.length);
+      if (!images.length) return null;
+      const music = item.music?.playUrl;
+      return { images, music: typeof music === 'string' && music ? music : undefined };
+    }
+    if (!found) throw new Error(`Data postingan TikTok tidak terbaca: ${lastError(stderr)}`);
+    return null;
+  } finally {
+    await fs.promises.rm(dir, { recursive: true, force: true });
+  }
+}
+
 /** Unduh satu video TikTok ke `<dir>/<base>.<ext>`; mengembalikan path file. */
 export async function downloadTikTokVideo(pageUrl: string, rawCookies: string, dir: string, base: string): Promise<string> {
   const { code, stderr } = await withCookieFile(rawCookies, (c) =>
@@ -79,5 +131,10 @@ export async function downloadTikTokVideo(pageUrl: string, rawCookies: string, d
   );
   const out = findOutput(dir, base);
   if (code !== 0 || !out) throw new Error(`Unduh TikTok gagal: ${lastError(stderr)}`);
+  // Postingan foto yang tidak terdeteksi: yt-dlp hanya memberi musiknya. Jangan disimpan sebagai video.
+  if (/\.(m4a|mp3|aac|opus)$/i.test(out)) {
+    await fs.promises.rm(out, { force: true });
+    throw new Error('Unduh TikTok gagal: hanya audio yang tersedia (postingan foto tidak terbaca)');
+  }
   return out;
 }
