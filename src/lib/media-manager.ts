@@ -8,7 +8,12 @@ import { cookieHeader } from './cookies';
 import { safeName, stamp, toAbs } from './manager';
 import { notify } from './notify';
 import { fetchFeed, fetchStories, IG_DOWNLOAD_HEADERS, type IgMedia } from './platforms/instagram-media';
-import { downloadTikTokVideo, fetchTikTokFeed } from './platforms/tiktok-media';
+import {
+  downloadTikTokVideo,
+  fetchTikTokFeed,
+  fetchTikTokPhotoPost,
+  TIKTOK_DOWNLOAD_HEADERS,
+} from './platforms/tiktok-media';
 import { getStore } from './store';
 import type { MediaItem, MediaSource } from './types';
 
@@ -28,8 +33,8 @@ function extOf(url: string, type: IgMedia['type']): string {
   return /^\.(jpe?g|png|webp|heic|mp4|mov)$/.test(ext) ? ext : type === 'video' ? '.mp4' : '.jpg';
 }
 
-async function download(url: string, dest: string): Promise<number> {
-  const res = await fetch(url, { headers: IG_DOWNLOAD_HEADERS, signal: AbortSignal.timeout(120_000) });
+async function download(url: string, dest: string, headers: Record<string, string> = IG_DOWNLOAD_HEADERS): Promise<number> {
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(120_000) });
   if (!res.ok || !res.body) throw new Error(`Unduh gagal: HTTP ${res.status}`);
   const tmp = `${dest}.part`;
   try {
@@ -130,7 +135,7 @@ class MediaManager {
         const failKey = `${src.id}:${m.mediaId}`;
         if (store.hasMediaItem(src.id, m.mediaId) || (this.fails.get(failKey) ?? 0) >= MAX_DOWNLOAD_FAILS) continue;
         try {
-          store.addMediaItem(await this.save(src, m, tiktok ? rawCookies : undefined));
+          for (const item of await this.save(src, m, tiktok ? rawCookies : undefined)) store.addMediaItem(item);
           added++;
         } catch (e) {
           this.fails.set(failKey, (this.fails.get(failKey) ?? 0) + 1);
@@ -150,7 +155,7 @@ class MediaManager {
       });
       if (added) {
         console.log(`[media] @${src.username} ${src.kind}: ${added} media baru`);
-        const label = src.kind === 'story' ? 'story' : tiktok ? 'video' : 'postingan';
+        const label = src.kind === 'story' ? 'story' : 'postingan';
         void notify(`📥 ${added} ${label} baru dari @${src.username} sudah diunduh`, {
           event: `${src.kind}_downloaded`,
           channel: src.username,
@@ -174,37 +179,81 @@ class MediaManager {
     }
   }
 
-  /** `tiktokCookies` diisi untuk sumber TikTok (diunduh lewat yt-dlp), kosong = Instagram (HTTP langsung). */
-  private async save(src: MediaSource, m: IgMedia, tiktokCookies?: string): Promise<MediaItem> {
+  /**
+   * Unduh satu media; postingan foto TikTok (slideshow) menjadi beberapa item: satu per foto, plus
+   * musiknya sebagai item audio. Item pertama memakai `mediaId` asli supaya `hasMediaItem` tetap
+   * mencegah unduh ulang; foto berikutnya `${id}_${i}`, musik `${id}_audio`.
+   * `tiktokCookies` diisi untuk sumber TikTok (lewat yt-dlp), kosong = Instagram (HTTP langsung).
+   */
+  private async save(src: MediaSource, m: IgMedia, tiktokCookies?: string): Promise<MediaItem[]> {
     const parts = src.platform === 'tiktok' ? [DIR_NAME[src.kind], 'tiktok'] : [DIR_NAME[src.kind]];
     const dir = path.join(DOWNLOAD_DIR, ...parts, safeName(src.username));
     await fs.promises.mkdir(dir, { recursive: true });
     const base = `${stamp(new Date(m.takenAt))}_${safeName(m.mediaId)}`;
 
-    let dest: string;
-    let size: number;
-    if (src.platform === 'tiktok') {
-      dest = await downloadTikTokVideo(m.url, tiktokCookies ?? '', dir, base);
-      size = (await fs.promises.stat(dest)).size;
-    } else {
-      dest = path.join(dir, `${base}${extOf(m.url, m.type)}`);
-      size = await download(m.url, dest);
-    }
-    await fs.promises.utimes(dest, new Date(), new Date(m.takenAt)).catch(() => {});
-    return {
-      id: randomUUID(),
-      sourceId: src.id,
-      kind: src.kind,
-      username: src.username,
-      mediaId: m.mediaId,
-      type: m.type,
-      file: path.relative(DOWNLOAD_DIR, dest).split(path.sep).join('/'),
-      size,
-      takenAt: m.takenAt,
-      downloadedAt: Date.now(),
-      caption: m.caption?.slice(0, 500),
-      seen: false,
+    const item = async (dest: string, size: number, mediaId: string, type: MediaItem['type']): Promise<MediaItem> => {
+      await fs.promises.utimes(dest, new Date(), new Date(m.takenAt)).catch(() => {});
+      return {
+        id: randomUUID(),
+        sourceId: src.id,
+        kind: src.kind,
+        username: src.username,
+        mediaId,
+        type,
+        file: path.relative(DOWNLOAD_DIR, dest).split(path.sep).join('/'),
+        size,
+        takenAt: m.takenAt,
+        downloadedAt: Date.now(),
+        caption: m.caption?.slice(0, 500),
+        seen: false,
+      };
     };
+
+    if (src.platform !== 'tiktok') {
+      const dest = path.join(dir, `${base}${extOf(m.url, m.type)}`);
+      return [await item(dest, await download(m.url, dest), m.mediaId, m.type)];
+    }
+
+    const photo = await fetchTikTokPhotoPost(m.url, tiktokCookies ?? '');
+    if (!photo) {
+      const dest = await downloadTikTokVideo(m.url, tiktokCookies ?? '', dir, base);
+      return [await item(dest, (await fs.promises.stat(dest)).size, m.mediaId, 'video')];
+    }
+
+    // Semua foto harus berhasil; kalau satu gagal, yang sudah terunduh dihapus dan postingan dicoba lagi nanti.
+    const saved: { dest: string; size: number }[] = [];
+    try {
+      for (const [i, urls] of photo.images.entries()) {
+        const dest = path.join(dir, `${base}_${i + 1}${extOf(urls[0], 'image')}`);
+        let lastErr: unknown;
+        let size = -1;
+        for (const u of urls) {
+          try {
+            size = await download(u, dest, TIKTOK_DOWNLOAD_HEADERS);
+            break;
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+        if (size < 0) throw lastErr;
+        saved.push({ dest, size });
+      }
+    } catch (e) {
+      await Promise.all(saved.map((s) => fs.promises.rm(s.dest, { force: true })));
+      throw new Error(`Unduh foto TikTok gagal: ${(e as Error).message}`);
+    }
+
+    const items = await Promise.all(saved.map((s, i) => item(s.dest, s.size, i === 0 ? m.mediaId : `${m.mediaId}_${i}`, 'image')));
+    // Musik pelengkap: kalau gagal, fotonya tetap disimpan.
+    if (photo.music) {
+      const dest = path.join(dir, `${base}_audio.mp3`);
+      try {
+        items.push(await item(dest, await download(photo.music, dest, TIKTOK_DOWNLOAD_HEADERS), `${m.mediaId}_audio`, 'audio'));
+      } catch (e) {
+        console.warn(`[media] @${src.username}: musik postingan foto ${m.mediaId} gagal diunduh: ${(e as Error).message}`);
+      }
+    }
+    return items;
   }
 
   /**
